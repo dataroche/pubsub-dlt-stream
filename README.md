@@ -3,17 +3,86 @@
 A Pub/sub subscription source implementation for [data load tool](https://dlthub.com/).
 [All DLT destinations should be supported.](https://dlthub.com/docs/dlt-ecosystem/destinations/)
 
-✅ Automatically infer schema
-✅ Dynamic table name based on a JSON property
-✅ Configurable batch size and window in seconds
-✅ Easily supports 200 messages/second throughput per worker on a GCP n1-standard-1 machine
+- ✅ Automatically infer schema
+- ✅ Dynamic table name based on a JSON property
+- ✅ Configurable batch size and window in seconds
+- ✅ Easily supports 200 messages/second throughput per worker on a GCP n1-standard-1 machine
+
+## Example usage
+
+We are using this project in production to stream analytics events from our server into
+our application database in near-realtime. Here is an example of the server-side code
+you can use to publish messages to Pub/Sub.
+
+### Events generation code (Typescript)
+
+```typescript
+import { PubSub } from "@google-cloud/pubsub";
+
+import {
+  GOOGLE_CLOUD_PROJECT,
+  PUBSUB_EVENTS_TOPIC_NAME,
+  GCP_KEY_FILENAME,
+} from "../../middleware/env";
+
+const pubsub = new PubSub({
+  keyFilename: GCP_KEY_FILENAME,
+  projectId: GOOGLE_CLOUD_PROJECT,
+});
+const eventsTopic = pubsub.topic(
+  `projects/${GOOGLE_CLOUD_PROJECT}/topics/${PUBSUB_EVENTS_TOPIC_NAME}`
+);
+
+const sendEvent = async (data: object & { eventName: string }) => {
+  try {
+    await eventsTopic.publishMessage({
+      json: { timestamp: Date.now(), ...data },
+    });
+  } catch (e: unknown) {
+    console.log(`Error while sending event: ${e}`);
+  }
+};
+```
+
+### Output table format
+
+Say you are using the above code and a running worker streaming data to your PostgreSQL database. If you input:
+
+```typescript
+await sendEvent({
+  timestamp: 1703199483000,
+  eventName: "tasks",
+  tookMs: 1322,
+  userId: "abcdefg",
+});
+```
+
+Using `dataset_name='analytics'`, `table_name_data_key='eventName'`, and
+`table_name_prefix='raw_events_'`, this will create a postgres
+`analytics.raw_events_tasks` table with the following schema:
+
+```
+         Column         |       Type        | Collation | Nullable | Default
+------------------------+-------------------+-----------+----------+---------
+ timestamp              | bigint            |           |          |
+ event_name             | character varying |           |          |
+ took_ms                | double precision  |           |          |
+ user_id                | character varying |           |          |
+ _dlt_load_id           | character varying |           | not null |
+ _dlt_id                | character varying |           | not null |
+Indexes:
+    "raw_events_tasks__dlt_id_key" UNIQUE CONSTRAINT, btree (_dlt_id)
+
+```
+
+And it will insert the incoming messages with that `eventName` in that table!
 
 ## Configuration
 
 Each configuration can be specified using a dlt config file, or the equivalent
 environment var.
 
-- `destination_name`: The output destination. [See here](https://dlthub.com/docs/dlt-ecosystem/destinations/)
+- `destination_name`: The output destination. [See DLT-supported destinations here](https://dlthub.com/docs/dlt-ecosystem/destinations/)
 - `dataset_name`: The output dataset name. Actual result on the database itself; i.e.
   with Postgres this is the schema.
 - `max_bundle_size`: If the number of messages reaches this within one window_size_secs,
@@ -27,7 +96,7 @@ environment var.
   JSON data should be in the format of `{ "eventName": "something", ... }`. Such an
   event would be stored in a table named `something`.
 - `table_name_prefix`: Prefix all table names with this string. I.e. if
-  `table_name_prefix=raw_events`, the previous example would yield a table named
+  `table_name_prefix=raw_events_`, the previous example would yield a table named
   `raw_events_something`
 - window_size_secs: Flush all received messages every X seconds.
 
@@ -51,13 +120,9 @@ docker push {REGION}-docker.pkg.dev/{PROJECT}/{REPOSITORY}/pubsub-dlt-stream:lat
 
 ### 2. Create a private env file containing your config and secrets
 
-{% note %}
-
-**Note:** If you want to access one of your Cloud SQL database, the easiest way is to
-enable the private IP. With the default network, your VMs will have authorization to
-connect to your Cloud SQL instance.
-
-{% endnote %}
+> **Note:** If you want to access one of your Cloud SQL database, the easiest way is to
+> enable the private IP. With the default network, your VMs will have authorization to
+> connect to your Cloud SQL instance.
 
 Name this file `.pubsub-dlt-stream.env`:
 
@@ -95,4 +160,4 @@ gcloud --project {PROJECT} compute instance-groups \
 
 ```
 
-You can play around the instance-group options to configure auto-scaling if you want to!
+You can play around the instance-group options to configure auto-scaling if you want to.
