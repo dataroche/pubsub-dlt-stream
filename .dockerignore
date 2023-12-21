@@ -1,0 +1,15 @@
+# ignore dlt stuff
+.dlt
+
+# ignore basic python artifacts
+.env
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+
+# ignore duckdb
+*.duckdb
+*.wal
+
+.vscode
+venv
