@@ -7,4 +7,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-ENTRYPOINT [ "python", "pubsub_to_postgres.py" ]
+ENTRYPOINT [ "python", "pubsub_dlt_source.py" ]

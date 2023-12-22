@@ -6,7 +6,7 @@ A Pub/sub subscription source implementation for [data load tool](https://dlthub
 - ✅ Automatically infer schema
 - ✅ Dynamic table name based on a JSON property
 - ✅ Configurable batch size and window in seconds
-- ✅ Easily supports 200 messages/second throughput per worker on a GCP n1-standard-1 machine
+- ✅ Easily supports 250 messages/second throughput per worker on a GCP n1-standard-1 machine
 
 ## Example usage
 
@@ -50,28 +50,37 @@ Say you are using the above code and a running worker streaming data to your Pos
 
 ```typescript
 await sendEvent({
-  timestamp: 1703199483000,
+  id: uuidv4(),
+  publishedAt: new Date(),
   eventName: "tasks",
   tookMs: 1322,
   userId: "abcdefg",
 });
 ```
 
-Using `dataset_name='analytics'`, `table_name_data_key='eventName'`, and
-`table_name_prefix='raw_events_'`, this will create a postgres
-`analytics.raw_events_tasks` table with the following schema:
+Using
+
+- `dataset_name='analytics'`,
+- `table_name_data_key='eventName'`,
+- `primary_key_column_name='id'`,
+- and `table_name_prefix='raw_events_'`,
+
+this will create a postgres `analytics.raw_events_tasks` table with the following
+schema:
 
 ```
-         Column         |       Type        | Collation | Nullable | Default
-------------------------+-------------------+-----------+----------+---------
- timestamp              | bigint            |           |          |
- event_name             | character varying |           |          |
- took_ms                | double precision  |           |          |
- user_id                | character varying |           |          |
- _dlt_load_id           | character varying |           | not null |
- _dlt_id                | character varying |           | not null |
+         Column         |           Type           | Collation | Nullable | Default
+------------------------+--------------------------+-----------+----------+---------
+ published_at           | timestamp with time zone |           |          |
+ id                     | character varying        |           | not null |
+ event_name             | character varying        |           |          |
+ took_ms                | double precision         |           |          |
+ user_id                | character varying        |           |          |
+ _dlt_load_id           | character varying        |           | not null |
+ _dlt_id                | character varying        |           | not null |
 Indexes:
     "raw_events_tasks__dlt_id_key" UNIQUE CONSTRAINT, btree (_dlt_id)
+    "raw_events_tasks_id_key" UNIQUE CONSTRAINT, btree (id)
 
 ```
 
@@ -87,9 +96,10 @@ environment var.
   with Postgres this is the schema.
 - `max_bundle_size`: If the number of messages reaches this within one window_size_secs,
   will flush early. Keep in mind that this implementation can't support more than about
-  500 messages per second. Therefore, If window_size_secs = 5, max_bundle_size should be
-  about 5 \* 500 = 2500. This will avoid one worker hogging many messages without
+  300 messages per second. Therefore, If window_size_secs = 5, max_bundle_size should be
+  about 5 \* 300 = 1500. This will avoid one worker hogging many messages without
   acking.
+- `primary_key_column_name`: The primary key column name to deduplicate incoming events
 - `pubsub_input_subscription`: The input Pub/Sub subscription path
 - `table_name_data_key`: The JSON data can contain a specific key `table_name_data_key`
   that will define the output table name. I.e. if `table_name_data_key=eventName`, the
@@ -128,13 +138,15 @@ Name this file `.pubsub-dlt-stream.env`:
 
 ```env
 
+DESTINATION_NAME=postgres
 DESTINATION__POSTGRES__CREDENTIALS=postgresql://user:password@10.109.144.1:5432/db
 DATASET_NAME=analytics
+WINDOW_SIZE_SECS=5
 MAX_BUNDLE_SIZE=5000
 PUBSUB_INPUT_SUBSCRIPTION=projects/{PROJECT}/subscriptions/{SUBSCRIPTION_NAME}
+PRIMARY_KEY_COLUMN_NAME=id
 TABLE_NAME_DATA_KEY=eventName
 TABLE_NAME_PREFIX=raw_events_
-WINDOW_SIZE_SECS=5
 ```
 
 ### 3. Create an instance template

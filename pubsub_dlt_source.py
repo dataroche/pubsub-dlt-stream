@@ -21,13 +21,14 @@ from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 
 
 DataT = dict[str, Any]
-DESTINATION_NAME = dlt.config["destination_name"]
-TABLE_NAME_DATA_KEY = dlt.config["table_name_data_key"] or None
 DATASET_NAME = dlt.config["dataset_name"]
+DESTINATION_NAME = dlt.config["destination_name"]
+MAX_BUNDLE_SIZE = dlt.config["max_bundle_size"]
+PRIMARY_KEY_COLUMN_NAME = dlt.config["primary_key_column_name"]
+PUBSUB_INPUT_SUBCRIPTION = dlt.config["pubsub_input_subscription"]
+TABLE_NAME_DATA_KEY = dlt.config["table_name_data_key"] or None
 TABLE_NAME_PREFIX = dlt.config["table_name_prefix"]
 WINDOW_SIZE_SECS = dlt.config["window_size_secs"]
-MAX_BUNDLE_SIZE = dlt.config["max_bundle_size"]
-PUBSUB_INPUT_SUBCRIPTION = dlt.config["pubsub_input_subscription"]
 
 
 class StreamingPull(threading.Thread):
@@ -90,32 +91,26 @@ class MessageBundle:
             self.messages_by_table_name[parsed_msg["table_name"]].append(
                 parsed_msg["data"]
             )
-            timestamp = parsed_msg["data"].get("timestamp")
-
-            if timestamp and (not self.min_ts or self.min_ts > timestamp):
-                self.min_ts = timestamp
-
-            if timestamp and (not self.max_ts or self.max_ts < timestamp):
-                self.max_ts = timestamp
-
             self.messages_to_ack.append(msg)
 
     @dlt.source
     def dlt_source(self):
         for table_name, msgs in self.messages_by_table_name.items():
             print(f"Loading {len(msgs)} for table {table_name}")
+            print()
             yield dlt.resource(
                 msgs,
-                write_disposition="append",
+                primary_key=PRIMARY_KEY_COLUMN_NAME,
+                write_disposition="merge" if PRIMARY_KEY_COLUMN_NAME else "append",
                 table_name=TABLE_NAME_PREFIX + table_name,
                 name=table_name,
+                columns={PRIMARY_KEY_COLUMN_NAME: dict(unique=True)}
+                if PRIMARY_KEY_COLUMN_NAME
+                else {},
             )
 
     def ack_bundle(self):
-        min_dt = self.min_ts and datetime.datetime.fromtimestamp(self.min_ts / 1000)
-        max_dt = self.max_ts and datetime.datetime.fromtimestamp(self.max_ts / 1000)
-
-        print(f"Acking {len(self.messages_to_ack)} between {min_dt} and {max_dt}...")
+        print(f"Acking {len(self.messages_to_ack)} messages...")
 
         for msg in self.messages_to_ack:
             msg.ack()
@@ -144,7 +139,7 @@ if __name__ == "__main__":
     pipeline = dlt.pipeline(
         pipeline_name="pubsub_dlt",
         destination=DESTINATION_NAME,
-        dataset_name=dlt.config["dataset_name"],
+        dataset_name=DATASET_NAME,
     )
 
     pull = StreamingPull(PUBSUB_INPUT_SUBCRIPTION)
