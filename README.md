@@ -36,7 +36,7 @@ const eventsTopic = pubsub.topic(
 const sendEvent = async (data: object & { eventName: string }) => {
   try {
     await eventsTopic.publishMessage({
-      json: { timestamp: Date.now(), ...data },
+      json: { id: uuidv4(), publishedAt: new Date(), ...data },
     });
   } catch (e: unknown) {
     console.log(`Error while sending event: ${e}`);
@@ -50,8 +50,6 @@ Say you are using the above code and a running worker streaming data to your Pos
 
 ```typescript
 await sendEvent({
-  id: uuidv4(),
-  publishedAt: new Date(),
   eventName: "tasks",
   tookMs: 1322,
   userId: "abcdefg",
@@ -62,7 +60,6 @@ Using
 
 - `dataset_name='analytics'`,
 - `table_name_data_key='eventName'`,
-- `primary_key_column_name='id'`,
 - and `table_name_prefix='raw_events_'`,
 
 this will create a postgres `analytics.raw_events_tasks` table with the following
@@ -80,7 +77,6 @@ schema:
  _dlt_id                | character varying        |           | not null |
 Indexes:
     "raw_events_tasks__dlt_id_key" UNIQUE CONSTRAINT, btree (_dlt_id)
-    "raw_events_tasks_id_key" UNIQUE CONSTRAINT, btree (id)
 
 ```
 
@@ -96,10 +92,9 @@ environment var.
   with Postgres this is the schema.
 - `max_bundle_size`: If the number of messages reaches this within one window_size_secs,
   will flush early. Keep in mind that this implementation can't support more than about
-  300 messages per second. Therefore, If window_size_secs = 5, max_bundle_size should be
-  about 5 \* 300 = 1500. This will avoid one worker hogging many messages without
+  500 messages per second. Therefore, If window_size_secs = 5, max_bundle_size should be
+  about 5 \* 500 = 2500. This will avoid one worker hogging many messages without
   acking.
-- `primary_key_column_name`: The primary key column name to deduplicate incoming events
 - `pubsub_input_subscription`: The input Pub/Sub subscription path
 - `table_name_data_key`: The JSON data can contain a specific key `table_name_data_key`
   that will define the output table name. I.e. if `table_name_data_key=eventName`, the
@@ -144,7 +139,6 @@ DATASET_NAME=analytics
 WINDOW_SIZE_SECS=5
 MAX_BUNDLE_SIZE=5000
 PUBSUB_INPUT_SUBSCRIPTION=projects/{PROJECT}/subscriptions/{SUBSCRIPTION_NAME}
-PRIMARY_KEY_COLUMN_NAME=id
 TABLE_NAME_DATA_KEY=eventName
 TABLE_NAME_PREFIX=raw_events_
 ```

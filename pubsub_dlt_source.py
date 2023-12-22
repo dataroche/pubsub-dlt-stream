@@ -24,7 +24,6 @@ DataT = dict[str, Any]
 DATASET_NAME = dlt.config["dataset_name"]
 DESTINATION_NAME = dlt.config["destination_name"]
 MAX_BUNDLE_SIZE = dlt.config["max_bundle_size"]
-PRIMARY_KEY_COLUMN_NAME = dlt.config["primary_key_column_name"]
 PUBSUB_INPUT_SUBCRIPTION = dlt.config["pubsub_input_subscription"]
 TABLE_NAME_DATA_KEY = dlt.config["table_name_data_key"] or None
 TABLE_NAME_PREFIX = dlt.config["table_name_prefix"]
@@ -37,7 +36,7 @@ class StreamingPull(threading.Thread):
         self.input_subscription = input_subscription
         self.messages: deque[Message] = deque()
         self.is_running = False
-        self.pull_future: Optional[StreamingPullFuture]
+        self.pull_future: Optional[StreamingPullFuture] = None
 
     def _callback(self, message: Message):
         self.messages.append(message)
@@ -71,10 +70,12 @@ class StreamingPull(threading.Thread):
 
     def consume(self, timeout: float, max_size: int):
         started_at = time.monotonic()
-        while time.monotonic() - started_at < timeout and len(self.messages) < max_size:
+        size = 0
+        while time.monotonic() - started_at < timeout and size < max_size:
             try:
                 message = self.messages.popleft()
                 yield message
+                size += 1
             except IndexError:
                 time.sleep(timeout / 10)
 
@@ -93,20 +94,18 @@ class MessageBundle:
             )
             self.messages_to_ack.append(msg)
 
+    def __len__(self):
+        return len(self.messages_to_ack)
+
     @dlt.source
     def dlt_source(self):
         for table_name, msgs in self.messages_by_table_name.items():
             print(f"Loading {len(msgs)} for table {table_name}")
-            print()
             yield dlt.resource(
                 msgs,
-                primary_key=PRIMARY_KEY_COLUMN_NAME,
-                write_disposition="merge" if PRIMARY_KEY_COLUMN_NAME else "append",
+                write_disposition="append",
                 table_name=TABLE_NAME_PREFIX + table_name,
                 name=table_name,
-                columns={PRIMARY_KEY_COLUMN_NAME: dict(unique=True)}
-                if PRIMARY_KEY_COLUMN_NAME
-                else {},
             )
 
     def ack_bundle(self):
@@ -146,12 +145,15 @@ if __name__ == "__main__":
     pull.start()
 
     try:
-        while True:
+        while pull.is_running:
             bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
-            load_info = pipeline.run(bundle.dlt_source())
-            bundle.ack_bundle()
+            if len(bundle):
+                load_info = pipeline.run(bundle.dlt_source())
+                bundle.ack_bundle()
+                # pretty print the information on data that was loaded
+                print(load_info)
+            else:
+                print(f"No messages received in the last {WINDOW_SIZE_SECS} seconds")
 
-            # pretty print the information on data that was loaded
-            print(load_info)
     finally:
         pull.stop()
