@@ -133,7 +133,9 @@ def get_event_key(data: DataT) -> str:
         return "default"
 
 
-if __name__ == "__main__":
+def main():
+    print("Starting pubsub_dlt_source.py")
+
     # configure the pipeline with your destination details
     pipeline = dlt.pipeline(
         pipeline_name="pubsub_dlt",
@@ -156,4 +158,9 @@ if __name__ == "__main__":
                 print(f"No messages received in the last {WINDOW_SIZE_SECS} seconds")
 
     finally:
+        print("Exiting pubsub_dlt_source.py")
         pull.stop()
+
+
+if __name__ == "__main__":
+    main()
