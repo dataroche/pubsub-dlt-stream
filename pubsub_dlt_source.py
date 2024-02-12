@@ -27,7 +27,7 @@ MAX_BUNDLE_SIZE = dlt.config["max_bundle_size"]
 PUBSUB_INPUT_SUBCRIPTION = dlt.config["pubsub_input_subscription"]
 TABLE_NAME_DATA_KEY = dlt.config["table_name_data_key"] or None
 TABLE_NAME_PREFIX = dlt.config["table_name_prefix"]
-WINDOW_SIZE_SECS = dlt.config["window_size_secs"]
+WINDOW_SIZE_SECS = float(dlt.config["window_size_secs"])
 
 
 class StreamingPull(threading.Thread):
@@ -147,15 +147,21 @@ def main():
     pull.start()
 
     try:
+        no_messages_count = 0
         while pull.is_running:
             bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
             if len(bundle):
+                no_messages_count = 0
                 load_info = pipeline.run(bundle.dlt_source())
                 bundle.ack_bundle()
                 # pretty print the information on data that was loaded
                 print(load_info)
             else:
-                print(f"No messages received in the last {WINDOW_SIZE_SECS} seconds")
+                no_messages_count += 1
+
+                if no_messages_count * WINDOW_SIZE_SECS > 120:
+                    print(f"No messages received in the last 2 minutes")
+                    no_messages_count = 0
 
     finally:
         print("Exiting pubsub_dlt_source.py")
