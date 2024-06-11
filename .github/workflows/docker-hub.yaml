@@ -18,7 +18,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: wil19558/pubsub-dlt-stream
+  IMAGE_NAME: dataroc/pubsub-dlt-stream
 
 jobs:
   push_to_registry:
