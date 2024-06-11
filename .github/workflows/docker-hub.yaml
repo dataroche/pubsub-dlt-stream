@@ -16,6 +16,10 @@ on:
   release:
     types: [published]
 
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: wil19558/pubsub-dlt-stream
+
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
@@ -39,7 +43,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
-          images: wil19558/pubsub-dlt-stream
+          images: ${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
         id: push
@@ -54,6 +58,6 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
