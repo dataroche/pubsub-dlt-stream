@@ -8,6 +8,10 @@ A Pub/sub subscription source implementation for [data load tool](https://dlthub
 - ✅ Configurable batch size and window in seconds
 - ✅ Easily supports 250 messages/second throughput per worker on a GCP n1-standard-1 machine
 
+## Docker Image
+
+The latest docker image is always available here: [hub.docker.com/r/dataroc/pubsub-dlt-stream](https://hub.docker.com/r/dataroc/pubsub-dlt-stream).
+
 ## Example usage
 
 We are using this project in production to stream analytics events from our server into
