@@ -185,19 +185,22 @@ def main():
     pull.start()
 
     try:
-        no_messages_count = 0
-        while pull.is_running:
-            bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
-            if len(bundle):
-                no_messages_count = 0
-                load_info = pipeline.run(bundle_source(bundle))
-                bundle.ack_bundle()
-            else:
-                no_messages_count += 1
-
-                if no_messages_count * WINDOW_SIZE_SECS > 120:
-                    print(f"No messages received in the last 2 minutes")
+        def generator():
+            no_messages_count = 0
+            while pull.is_running:
+                bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
+                if len(bundle):
                     no_messages_count = 0
+                    yield bundle
+                    bundle.ack_bundle()
+                else:
+                    no_messages_count += 1
+
+                    if no_messages_count * WINDOW_SIZE_SECS > 120:
+                        print(f"No messages received in the last 2 minutes")
+                        no_messages_count = 0
+
+        pipeline.run(generator)
 
     finally:
         print("Exiting pubsub_dlt_source.py")
@@ -211,7 +214,12 @@ def get_shaped_schema(dataset_name: str, api_key: str) -> str:
         return DATASET_SCHEMAS[dataset_name]
 
     print(f"Getting schema for dataset {dataset_name}")
-    resp = requests.get(f"https://api.shaped.ai/v1/datasets/{dataset_name}", headers={"x-api-key": api_key})
+    url= f"https://api.shaped.ai/v1/datasets/{dataset_name}"
+    resp = requests.get(url, headers={"x-api-key": api_key})
+
+    if (resp.status_code != 200):
+        raise Exception(f"Unexpected response from: '{url}' with status code {resp.status_code}: {resp.text}")
+
     DATASET_SCHEMAS[dataset_name] = resp.json()['dataset_schema']
     return DATASET_SCHEMAS[dataset_name]
 
@@ -225,10 +233,11 @@ def shaped_custom_dataset(items: TDataItems, table: TTableSchema, api_key: str =
         "data": [{k: v for k, v in i.items() if k in schema} for i in items],
     })
 
-    resp = requests.post(f"https://api.shaped.ai/v1/datasets/{table_name}/insert", headers={"x-api-key": api_key, 'Content-Type': 'application/json',}, data=data)
+    url= f"https://api.shaped.ai/v1/datasets/{table_name}/insert"
+    resp = requests.post(url, headers={"x-api-key": api_key, 'Content-Type': 'application/json',}, data=data)
 
     if (resp.status_code != 200):
-        raise Exception(f"Failed to insert data into Shaped dataset {table_name}: {resp.text}")
+        raise Exception(f"Failed to insert data into: '{url}' with status code {resp.status_code}: {resp.text}")
 
 
 CUSTOM_DESTINATIONS = {
