@@ -217,6 +217,10 @@ def get_shaped_schema(dataset_name: str, api_key: str) -> str:
     url= f"https://api.shaped.ai/v1/datasets/{dataset_name}"
     resp = requests.get(url, headers={"x-api-key": api_key})
 
+    if (resp.status_code == 404):
+        print(f"Shaped dataset {dataset_name} not found, please create it first")
+        return None
+
     if (resp.status_code != 200):
         raise Exception(f"Unexpected response from: '{url}' with status code {resp.status_code}: {resp.text}")
 
@@ -227,6 +231,9 @@ def get_shaped_schema(dataset_name: str, api_key: str) -> str:
 def shaped_custom_dataset(items: TDataItems, table: TTableSchema, api_key: str = dlt.secrets.value) -> None:
     table_name = table.get('name')
     schema = get_shaped_schema(table_name, api_key)
+
+    if (schema is None):
+        return
 
     # Only include columns that are in the schema, else shaped will throw an error
     data = json.dumpb({
