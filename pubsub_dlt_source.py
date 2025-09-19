@@ -185,22 +185,20 @@ def main():
     pull.start()
 
     try:
-        def generator():
-            no_messages_count = 0
-            while pull.is_running:
-                bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
-                if len(bundle):
+        pipeline.sync_destination()
+        no_messages_count = 0
+        while pull.is_running:
+            bundle = pull.bundle(timeout=WINDOW_SIZE_SECS)
+            if len(bundle):
+                no_messages_count = 0
+                pipeline.run(bundle_source(bundle))
+                bundle.ack_bundle()
+            else:
+                no_messages_count += 1
+
+                if no_messages_count * WINDOW_SIZE_SECS > 120:
+                    print(f"No messages received in the last 2 minutes")
                     no_messages_count = 0
-                    yield bundle
-                    bundle.ack_bundle()
-                else:
-                    no_messages_count += 1
-
-                    if no_messages_count * WINDOW_SIZE_SECS > 120:
-                        print(f"No messages received in the last 2 minutes")
-                        no_messages_count = 0
-
-        pipeline.run(generator)
 
     finally:
         print("Exiting pubsub_dlt_source.py")
